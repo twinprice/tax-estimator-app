@@ -1,7 +1,68 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { FC, ChangeEvent, FormEvent } from 'react';
+
+// --- Type Definitions for TypeScript ---
+
+type FilingStatus = 'single' | 'marriedFilingJointly' | 'headOfHousehold';
+type StateAbbr = 'none' | 'virginia' | 'california' | 'newYork' | 'northCarolina' | 'florida' | 'texas';
+
+interface Bracket {
+  rate: number;
+  limit: number;
+}
+
+interface FilingStatusDetail {
+  deduction: number;
+  brackets: Bracket[];
+  capitalGainsBrackets?: Bracket[];
+  niitThreshold?: number;
+  medicareThreshold?: number;
+  isFlat?: boolean;
+}
+
+type TaxableStateInfo = {
+  [key in FilingStatus]: FilingStatusDetail;
+};
+
+type NoTaxStateInfo = { noTax: true };
+
+type TaxInfo = {
+  federal: TaxableStateInfo;
+  virginia: TaxableStateInfo;
+  california: TaxableStateInfo;
+  newYork: TaxableStateInfo;
+  northCarolina: TaxableStateInfo;
+  florida: NoTaxStateInfo;
+  texas: NoTaxStateInfo;
+};
+
+interface TaxData {
+  federal: {
+    totalTax: number;
+    agi: number;
+    taxableIncome: number;
+    incomeTaxBeforeCredits: number;
+    medicareTax: number;
+    niit: number;
+    totalPayments: number;
+    balanceDueOrRefund: number;
+  };
+  state: {
+    stateName: string;
+    totalTax: number;
+    noTaxState?: boolean;
+    taxableIncome?: number;
+  } | null;
+}
+
+interface ScheduleEData {
+    rentalIncome: string;
+    rentalExpenses: string;
+    passthroughIncome: string;
+}
 
 // --- Helper Components ---
-const DollarDisplay = ({ value, isNegative = false, colorClass = '' }) => {
+const DollarDisplay: FC<{ value: number; isNegative?: boolean; colorClass?: string }> = ({ value, isNegative = false, colorClass = '' }) => {
     const displayValue = Math.abs(value);
     const formattedValue = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -13,7 +74,7 @@ const DollarDisplay = ({ value, isNegative = false, colorClass = '' }) => {
     return <span className={`font-semibold ${finalColorClass}`}>{isNegative ? `-${formattedValue}` : formattedValue}</span>;
 };
 
-const InputField = ({ label, id, value, onChange, placeholder = "0", helpText }) => (
+const InputField: FC<{ label: string; id: string; value: string; onChange: (e: ChangeEvent<HTMLInputElement>) => void; placeholder?: string; helpText?: string }> = ({ label, id, value, onChange, placeholder = "0", helpText }) => (
     <div>
         <label htmlFor={id} className="block text-sm font-medium text-gray-700">{label}</label>
         <div className="mt-1 relative rounded-md shadow-sm">
@@ -34,7 +95,7 @@ const InputField = ({ label, id, value, onChange, placeholder = "0", helpText })
     </div>
 );
 
-const SelectField = ({ label, id, value, onChange, options }) => (
+const SelectField: FC<{ label: string; id: string; value: string; onChange: (e: ChangeEvent<HTMLSelectElement>) => void; options: { value: string; label: string }[] }> = ({ label, id, value, onChange, options }) => (
     <div>
         <label htmlFor={id} className="block text-sm font-medium text-gray-700">{label}</label>
         <select
@@ -50,8 +111,9 @@ const SelectField = ({ label, id, value, onChange, options }) => (
     </div>
 );
 
+
 // --- Schedule E Modal Component ---
-const ScheduleEModal = ({ isOpen, onClose, onSave, scheduleEData, setScheduleEData }) => {
+const ScheduleEModal: FC<{ isOpen: boolean; onClose: () => void; onSave: (data: ScheduleEData) => void; scheduleEData: ScheduleEData; setScheduleEData: (data: ScheduleEData) => void; }> = ({ isOpen, onClose, onSave, scheduleEData, setScheduleEData }) => {
     if (!isOpen) return null;
 
     const handleSave = () => {
@@ -59,7 +121,7 @@ const ScheduleEModal = ({ isOpen, onClose, onSave, scheduleEData, setScheduleEDa
         onClose();
     };
     
-    const p = (v) => parseFloat(v) || 0;
+    const p = (v: string) => parseFloat(v) || 0;
     const netIncome = p(scheduleEData.rentalIncome) - p(scheduleEData.rentalExpenses) + p(scheduleEData.passthroughIncome);
 
     return (
@@ -76,8 +138,8 @@ const ScheduleEModal = ({ isOpen, onClose, onSave, scheduleEData, setScheduleEDa
                     <h3 className="text-lg font-semibold">Net Schedule E Income: <DollarDisplay value={netIncome} colorClass="text-indigo-600" /></h3>
                 </div>
                 <div className="mt-6 flex justify-end space-x-3">
-                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
-                    <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Save and Close</button>
+                    <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                    <button type="button" onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Save and Close</button>
                 </div>
             </div>
         </div>
@@ -89,29 +151,35 @@ const ScheduleEModal = ({ isOpen, onClose, onSave, scheduleEData, setScheduleEDa
 export default function App() {
     // --- State Management ---
     const [form, setForm] = useState({
-        wages: '', filingStatus: 'single', state: 'none', credits: '', interest: '',
+        wages: '', filingStatus: 'single' as FilingStatus, state: 'none' as StateAbbr, credits: '', interest: '',
         ordDividends: '', qualDividends: '', stGains: '', ltGains: '', charity: '',
         withheld: '', estimatedPayments: ''
     });
-    const [scheduleEData, setScheduleEData] = useState({ rentalIncome: '', rentalExpenses: '', passthroughIncome: '' });
+    const [scheduleEData, setScheduleEData] = useState<ScheduleEData>({ rentalIncome: '', rentalExpenses: '', passthroughIncome: '' });
     const [netScheduleE, setNetScheduleE] = useState(0);
     const [isScheduleEModalOpen, setScheduleEModalOpen] = useState(false);
     const [showAdvanced, setShowAdvanced] = useState(false);
-    const [taxData, setTaxData] = useState(null);
+    const [taxData, setTaxData] = useState<TaxData | null>(null);
 
-    const handleInputChange = (e) => {
+    const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { id, value } = e.target;
-        setForm(prev => ({ ...prev, [id]: value }));
+        if (id === 'filingStatus') {
+            setForm(prev => ({ ...prev, [id]: value as FilingStatus }));
+        } else if (id === 'state') {
+            setForm(prev => ({ ...prev, [id]: value as StateAbbr }));
+        } else {
+            setForm(prev => ({ ...prev, [id]: value }));
+        }
     };
 
-    const handleSaveScheduleE = (data) => {
-        const p = (v) => parseFloat(v) || 0;
+    const handleSaveScheduleE = (data: ScheduleEData) => {
+        const p = (v: string) => parseFloat(v) || 0;
         const netIncome = p(data.rentalIncome) - p(data.rentalExpenses) + p(data.passthroughIncome);
         setNetScheduleE(netIncome);
     };
 
     // --- Tax Data ---
-    const taxInfo = {
+    const taxInfo: TaxInfo = {
         federal: {
             single: { deduction: 15000, brackets: [ { rate: 0.10, limit: 11950 }, { rate: 0.12, limit: 48575 }, { rate: 0.22, limit: 103575 }, { rate: 0.24, limit: 197725 }, { rate: 0.32, limit: 251050 }, { rate: 0.35, limit: 627600 }, { rate: 0.37, limit: Infinity } ], capitalGainsBrackets: [ { rate: 0.00, limit: 49230 }, { rate: 0.15, limit: 541900 }, { rate: 0.20, limit: Infinity } ], niitThreshold: 200000, medicareThreshold: 200000 },
             marriedFilingJointly: { deduction: 30000, brackets: [ { rate: 0.10, limit: 23900 }, { rate: 0.12, limit: 97150 }, { rate: 0.22, limit: 207150 }, { rate: 0.24, limit: 395450 }, { rate: 0.32, limit: 502100 }, { rate: 0.35, limit: 753100 }, { rate: 0.37, limit: Infinity } ], capitalGainsBrackets: [ { rate: 0.00, limit: 98460 }, { rate: 0.15, limit: 606550 }, { rate: 0.20, limit: Infinity } ], niitThreshold: 250000, medicareThreshold: 250000 },
@@ -137,27 +205,28 @@ export default function App() {
             marriedFilingJointly: { deduction: 25500, brackets: [ { rate: 0.0425, limit: Infinity } ], isFlat: true },
             headOfHousehold: { deduction: 19125, brackets: [ { rate: 0.0425, limit: Infinity } ], isFlat: true }
         },
-        florida: { noTax: true, single: {}, marriedFilingJointly: {}, headOfHousehold: {} },
-        texas: { noTax: true, single: {}, marriedFilingJointly: {}, headOfHousehold: {} }
+        florida: { noTax: true },
+        texas: { noTax: true }
     };
     
     // --- Calculation Logic ---
     const calculateTaxes = () => {
         const { wages, filingStatus, state, credits, interest, ordDividends, qualDividends, stGains, ltGains, charity, withheld, estimatedPayments } = form;
-        const p = (v) => parseFloat(v) || 0;
+        const p = (v: string) => parseFloat(v) || 0;
         const grossWages = p(wages), taxCredits = p(credits), interestIncome = p(interest), ordinaryDividends = p(ordDividends),
               qualifiedDividends = p(qualDividends), shortTermGains = p(stGains), longTermGains = p(ltGains), charitableDed = p(charity),
               taxWithheld = p(withheld), estimatedTaxPayments = p(estimatedPayments);
 
         // --- Federal Calculation ---
         const fedStatusInfo = taxInfo.federal[filingStatus];
-        const ordinaryIncome = grossWages + interestIncome + ordinaryDividends + shortTermGains + (netScheduleE > 0 ? netScheduleE : 0); // Add positive Sch E income
+        if (!fedStatusInfo || !fedStatusInfo.capitalGainsBrackets) return;
+
+        const ordinaryIncome = grossWages + interestIncome + ordinaryDividends + shortTermGains + (netScheduleE > 0 ? netScheduleE : 0);
         const preferentialIncome = qualifiedDividends + longTermGains;
         const totalAgi = ordinaryIncome + preferentialIncome;
         const totalDeductions = fedStatusInfo.deduction + charitableDed;
         const taxableIncome = Math.max(0, totalAgi - totalDeductions);
         
-        // Regular Income Tax
         const taxableOrdinaryIncome = Math.max(0, taxableIncome - preferentialIncome);
         let regularIncomeTax = 0;
         let remainingOrdIncome = taxableOrdinaryIncome;
@@ -182,12 +251,10 @@ export default function App() {
         }
         const incomeTaxBeforeCredits = regularIncomeTax + capitalGainsTax;
 
-        // Additional Medicare Tax (Form 8959)
-        const medicareTax = Math.max(0, grossWages - fedStatusInfo.medicareThreshold) * 0.009;
+        const medicareTax = Math.max(0, grossWages - (fedStatusInfo.medicareThreshold || 0)) * 0.009;
 
-        // Net Investment Income Tax (NIIT, Form 8960)
         const netInvestmentIncome = interestIncome + ordinaryDividends + shortTermGains + longTermGains + netScheduleE;
-        const niitBase = Math.min(Math.max(0, netInvestmentIncome), Math.max(0, totalAgi - fedStatusInfo.niitThreshold));
+        const niitBase = Math.min(Math.max(0, netInvestmentIncome), Math.max(0, totalAgi - (fedStatusInfo.niitThreshold || 0)));
         const niit = niitBase * 0.038;
 
         const totalFederalTax = incomeTaxBeforeCredits + medicareTax + niit - taxCredits;
@@ -196,50 +263,54 @@ export default function App() {
 
         const federalResults = { totalTax: totalFederalTax, agi: totalAgi, taxableIncome, incomeTaxBeforeCredits, medicareTax, niit, totalPayments, balanceDueOrRefund };
 
-        // --- State Calculation (Simplified) ---
-        let stateResults = null;
-        const stateInfo = taxInfo[state];
-        if (stateInfo) {
-            const stateName = stateOptions.find(opt => opt.value === state).label;
-            if (stateInfo.noTax) {
+        // --- State Calculation ---
+        let stateResults: TaxData['state'] = null;
+        if (state !== 'none') {
+            const stateData = taxInfo[state];
+            const stateName = stateOptions.find(opt => opt.value === state)?.label || state;
+
+            if ('noTax' in stateData) {
                 stateResults = { stateName, totalTax: 0, noTaxState: true };
             } else {
-                const stateStatusInfo = stateInfo[filingStatus];
-                const stateDeduction = stateStatusInfo.deduction;
-                const stateTaxableIncome = Math.max(0, totalAgi - stateDeduction);
-                let stateTax = 0;
+                const taxableStateInfo = stateData as TaxableStateInfo;
+                const stateStatusInfo = taxableStateInfo[filingStatus];
+                if (stateStatusInfo) {
+                    const stateDeduction = stateStatusInfo.deduction;
+                    const stateTaxableIncome = Math.max(0, totalAgi - stateDeduction);
+                    let stateTax = 0;
 
-                if (stateStatusInfo.isFlat) {
-                    stateTax = stateTaxableIncome * stateStatusInfo.brackets[0].rate;
-                } else {
-                    let remainingStateIncome = stateTaxableIncome;
-                    let statePrevLimit = 0;
-                    for (const bracket of stateStatusInfo.brackets) {
-                        if (remainingStateIncome <= 0) break;
-                        const incomeInBracket = Math.min(remainingStateIncome, bracket.limit - statePrevLimit);
-                        stateTax += incomeInBracket * bracket.rate;
-                        remainingStateIncome -= incomeInBracket;
-                        statePrevLimit = bracket.limit;
+                    if (stateStatusInfo.isFlat) {
+                        stateTax = stateTaxableIncome * stateStatusInfo.brackets[0].rate;
+                    } else {
+                        let remainingStateIncome = stateTaxableIncome;
+                        let statePrevLimit = 0;
+                        for (const bracket of stateStatusInfo.brackets) {
+                            if (remainingStateIncome <= 0) break;
+                            const incomeInBracket = Math.min(remainingStateIncome, bracket.limit - statePrevLimit);
+                            stateTax += incomeInBracket * bracket.rate;
+                            remainingStateIncome -= incomeInBracket;
+                            statePrevLimit = bracket.limit;
+                        }
                     }
+                    stateResults = { stateName, totalTax: Math.max(0, stateTax), taxableIncome: stateTaxableIncome };
                 }
-                stateResults = { stateName, totalTax: Math.max(0, stateTax), taxableIncome: stateTaxableIncome };
             }
         }
         
         setTaxData({ federal: federalResults, state: stateResults });
     };
 
-    const handleFormSubmit = (e) => {
+    const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         calculateTaxes();
     };
     
     const stateOptions = [
-        { value: 'none', label: 'Select State' }, { value: 'california', label: 'California' }, { value: 'florida', label: 'Florida' },
-        { value: 'newYork', label: 'New York' }, { value: 'northCarolina', label: 'North Carolina' }, { value: 'texas', label: 'Texas' },
-        { value: 'virginia', label: 'Virginia' },
+        { value: 'none' as StateAbbr, label: 'Select State' }, { value: 'california' as StateAbbr, label: 'California' }, { value: 'florida' as StateAbbr, label: 'Florida' },
+        { value: 'newYork' as StateAbbr, label: 'New York' }, { value: 'northCarolina' as StateAbbr, label: 'North Carolina' }, { value: 'texas' as StateAbbr, label: 'Texas' },
+        { value: 'virginia' as StateAbbr, label: 'Virginia' },
     ];
-    const filingStatusOptions = [ { value: 'single', label: 'Single' }, { value: 'marriedFilingJointly', label: 'Married Filing Jointly' }, { value: 'headOfHousehold', label: 'Head of Household' }];
+    const filingStatusOptions = [ { value: 'single' as FilingStatus, label: 'Single' }, { value: 'marriedFilingJointly' as FilingStatus, label: 'Married Filing Jointly' }, { value: 'headOfHousehold' as FilingStatus, label: 'Head of Household' }];
 
     return (
         <div className="bg-gray-50 min-h-screen font-sans">
